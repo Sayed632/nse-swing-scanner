@@ -1,0 +1,66 @@
+# ============================================================
+# NSE Swing Scanner – Configuration
+# ============================================================
+
+universe:
+  # Options: "nifty500" | "full_nse" | "custom"
+  mode: "full_nse"
+  # Minimum average daily volume (shares) over last 20 sessions
+  min_avg_volume: 50000
+  # Minimum price filter (INR)
+  min_price: 30.0
+  # Maximum price filter (optional, set null to disable)
+  max_price: null
+  # Exclude SME / Emerge stocks (recommended for swing liquidity)
+  exclude_sme: true
+
+scan:
+  # Lookback period for daily bars
+  history_period: "6mo"
+  # Parallel workers (adjust to your machine / GitHub runner limits)
+  max_workers: 12
+  # Rate-limit delay between batches (seconds) – helps avoid Yahoo blocks
+  batch_delay: 1.5
+  # Minimum number of swing signals required to qualify
+  min_signals: 2
+
+indicators:
+  ema_short: 20
+  ema_mid: 50
+  ema_long: 200
+  rsi_period: 14
+  atr_period: 14
+  volume_sma: 20
+  macd_fast: 12
+  macd_slow: 26
+  macd_signal: 9
+
+# Swing scoring weights (must sum roughly to 1.0)
+weights:
+  signal_count: 0.30
+  trend_strength: 0.25
+  volume: 0.15
+  rsi_position: 0.15
+  risk_reward: 0.15
+
+# Risk parameters for suggested levels
+risk:
+  atr_sl_multiplier: 1.5      # Stop = Entry - 1.5 × ATR
+  atr_t1_multiplier: 2.0      # Target 1 = Entry + 2.0 × ATR
+  atr_t2_multiplier: 3.5      # Target 2 = Entry + 3.5 × ATR
+  min_risk_reward: 1.5
+
+output:
+  top_n: 30                    # How many top setups to show / save
+  save_csv: true
+  results_dir: "results"
+  cache_dir: "cache"
+  cache_hours: 6               # Re-use cached OHLCV if younger than this
+
+telegram:
+  enabled: false               # Set true + add secrets to enable
+  # Token and chat_id come from environment variables:
+  # TELEGRAM_TOKEN / TELEGRAM_CHAT_ID
+
+logging:
+  level: "INFO"

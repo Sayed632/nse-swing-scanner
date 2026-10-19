@@ -1,0 +1,1 @@
+# NSE Swing Scanner package
