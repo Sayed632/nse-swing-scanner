@@ -45,7 +45,7 @@ def setup_logging(level: str = "INFO") -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="NSE Parallel Swing Scanner")
     parser.add_argument("--config", default="config.yaml", help="Path to config.yaml")
-    parser.add_argument("--universe", choices=["full_nse", "nifty500"], help="Override universe")
+    parser.add_argument("--universe", choices=["full_nse", "nifty500", "fno"], help="Override universe")
     parser.add_argument("--workers", type=int, help="Override max parallel workers")
     parser.add_argument("--top", type=int, help="Override top N results")
     parser.add_argument("--no-cache", action="store_true", help="Ignore existing cache")

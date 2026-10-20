@@ -1,88 +1,77 @@
 # NSE Swing Scanner
 
-**Parallel swing-trade scanner for the full NSE mainboard equity universe (~2,100–2,200 names).**
+**Parallel swing / daily scanner for NSE with optional F&O Open Interest + PCR.**
 
-Scans daily charts in parallel, applies multi-factor technical confluence, ranks setups by a transparent score, and outputs entry / stop / target levels based on ATR.
+- `full_nse` or `nifty500` → pure technical swing setups  
+- **`fno`** (recommended for daily trading) → technical confluence **+** OI Buildup + PCR
 
-This is a **separate, clean project** from the existing `nse-live-scanner` (live momentum + sentiment bot). Keep both if you want live intraday alerts **and** end-of-day swing ideas.
+This is a **separate project** from `nse-live-scanner`. Keep both.
 
 ---
 
 ## Features
 
-- **Full NSE mainboard** universe (EQ + BE series) pulled live from NSE archives, or Nifty 500
-- Parallel download + analysis (`ThreadPoolExecutor` + caching)
-- Classic swing confluence:
-  - Price > EMA 200
-  - EMA 20 > EMA 50 alignment
-  - RSI recovery from oversold zone
-  - MACD histogram turning up
-  - Volume surge on green day
-  - Proximity to 52-week high
-- ATR-based stop / target suggestions + risk-reward filter
-- Configurable scoring weights
-- CSV output + rich terminal table
-- Optional Telegram (disabled by default)
-- GitHub Actions ready (optional)
+- Universes: `full_nse` | `nifty500` | **`fno`**
+- Parallel download + analysis + parquet cache
+- Classic swing confluence (EMA stack, RSI recovery, MACD, volume, near 52w high)
+- **F&O layer** (when mode = fno):
+  - Put-Call Ratio (PCR)
+  - OI Buildup: Long Buildup / Short Covering / Short Buildup / Long Unwinding
+  - OI conviction score that boosts or filters setups
+- ATR-based entry / stop / targets
+- CSV + rich table output
+- GitHub Actions ready
 
 ---
 
 ## Quick Start
 
 ```bash
-# 1. Clone / create the repo
-git clone https://github.com/YOUR_USERNAME/nse-swing-scanner.git
+git clone https://github.com/Sayed632/nse-swing-scanner.git
 cd nse-swing-scanner
 
-# 2. Virtual environment
 python -m venv venv
-# Windows
-venv\Scripts\activate
-# Linux / macOS
+# Windows: venv\Scripts\activate
 source venv/bin/activate
 
-# 3. Install
 pip install -r requirements.txt
 
-# 4. Run (full NSE mainboard)
-python main.py
+# F&O mode (Technical + OI + PCR) – best for daily trading
+python main.py --universe fno --workers 8 --top 20
 
-# Or Nifty 500 only (faster)
-python main.py --universe nifty500 --workers 16 --top 25
+# Pure swing on Nifty 500
+python main.py --universe nifty500 --workers 12 --top 25
 ```
 
-Results are saved under `results/swing_setups_YYYYMMDD_HHMM.csv`.
+Results are saved under `results/`.
 
 ---
 
-## Configuration
+## Configuration (`config.yaml`)
 
-Edit `config.yaml`:
-
-| Section | Key settings |
-|---------|--------------|
-| `universe.mode` | `"full_nse"` or `"nifty500"` |
-| `universe.min_avg_volume` | Liquidity filter (default 50 000) |
-| `universe.min_price` | Ignore very cheap stocks |
-| `scan.max_workers` | Parallelism (8–16 typical) |
-| `scan.min_signals` | How many confluence factors required |
-| `indicators.*` | EMA / RSI / MACD / ATR periods |
-| `weights.*` | Score component weights |
-| `risk.*` | ATR multipliers for stop & targets |
+| Key | Meaning |
+|-----|---------|
+| `universe.mode` | `fno` / `nifty500` / `full_nse` |
+| `oi.enabled` | Turn OI + PCR layer on/off |
+| `oi.min_oi_score` | Minimum OI conviction to keep a setup |
+| `oi.long_buildup_bonus` | Extra points when Long Buildup is detected |
+| `scan.max_workers` | Parallelism |
+| `scan.min_signals` | Minimum technical confluence factors |
 
 ---
 
-## How the score works (0–100)
+## OI Buildup (quick reference)
 
-| Component | Weight | What it measures |
-|-----------|--------|------------------|
-| Signal count | 30 % | Number of active confluence signals |
-| Trend strength | 25 % | Full EMA stack quality |
-| Volume | 15 % | Relative volume vs 20-day average |
-| RSI position | 15 % | Ideal swing zone (≈45–65) |
-| Risk-reward | 15 % | Quality of ATR-based R:R |
+| Price | OI Change | Label | Bias |
+|-------|-----------|-------|------|
+| ↑ | ↑ | **Long Buildup** | Strong Bullish |
+| ↑ | ↓ | **Short Covering** | Bullish |
+| ↓ | ↑ | **Short Buildup** | Strong Bearish |
+| ↓ | ↓ | **Long Unwinding** | Bearish |
 
-Only stocks that clear the hard filters (above EMA 200 + minimum signal count + liquidity) are scored.
+PCR = Put OI ÷ Call OI  
+- Low PCR (< 0.7) → more calls → bullish lean  
+- High PCR (> 1.3) → more puts → cautious / bearish lean
 
 ---
 
@@ -90,40 +79,27 @@ Only stocks that clear the hard filters (above EMA 200 + minimum signal count + 
 
 ```
 nse-swing-scanner/
-├── main.py                 # CLI entry point
-├── config.yaml             # All tunables
+├── main.py
+├── config.yaml
 ├── requirements.txt
-├── README.md
 ├── src/
-│   ├── universe.py         # NSE list loader
-│   ├── data.py             # Download + parquet cache
-│   ├── indicators.py       # EMA/RSI/MACD/ATR + signal logic
-│   └── scanner.py          # Orchestration + ranking
-├── cache/                  # OHLCV parquet files (gitignored)
-└── results/                # Dated CSV outputs
+│   ├── universe.py
+│   ├── data.py
+│   ├── indicators.py
+│   ├── oi.py          ← F&O OI + PCR + Buildup
+│   └── scanner.py
+├── cache/
+└── results/
 ```
 
 ---
 
-## Notes & Limitations
+## Notes
 
-- Data source is Yahoo Finance (`yfinance`). It is free but rate-limited; the scanner uses batching + cache to stay polite.
-- Full mainboard scan of ~2,000 names typically takes 4–12 minutes depending on workers, cache hit rate and network.
-- This is **not** financial advice. Swing setups can fail. Always apply your own risk management and position sizing.
-- SME / Emerge stocks are excluded by default for liquidity reasons.
-
----
-
-## Next possible upgrades
-
-- Weekly bias filter
-- Relative strength vs Nifty
-- Telegram / Discord alerts
-- Simple back-test module
-- Streamlit dashboard
-
----
+- OI data comes from NSE via `nsepython`. It works best during market hours.
+- First run downloads data and is slower; later runs use cache.
+- This is **not** financial advice. Always manage your own risk.
 
 ## License
 
-MIT – use freely, improve, and share.
+MIT

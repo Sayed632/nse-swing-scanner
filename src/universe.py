@@ -136,5 +136,8 @@ def load_universe(mode: str = "full_nse", exclude_sme: bool = True) -> List[str]
         return get_full_nse_mainboard(exclude_sme=exclude_sme)
     if mode in ("nifty500", "nifty_500", "500"):
         return get_nifty500()
+    if mode in ("fno", "fo", "futures", "f&o"):
+        from .oi import get_fno_symbols
+        return get_fno_symbols()
     logger.warning("Unknown universe mode '%s' – using full_nse", mode)
     return get_full_nse_mainboard(exclude_sme=exclude_sme)

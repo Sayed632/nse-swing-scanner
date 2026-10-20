@@ -3,8 +3,9 @@
 # ============================================================
 
 universe:
-  # Options: "nifty500" | "full_nse" | "custom"
-  mode: "full_nse"
+  # Options: "nifty500" | "full_nse" | "fno"
+  # "fno" = F&O stocks only (best for OI + PCR + daily trading)
+  mode: "fno"
   # Minimum average daily volume (shares) over last 20 sessions
   min_avg_volume: 50000
   # Minimum price filter (INR)
@@ -13,6 +14,15 @@ universe:
   max_price: null
   # Exclude SME / Emerge stocks (recommended for swing liquidity)
   exclude_sme: true
+
+# Open Interest / PCR settings (used when universe.mode = fno)
+oi:
+  enabled: true
+  # Minimum OI conviction score (0-100) to keep a setup
+  min_oi_score: 45
+  # Boost technical score when Long Buildup or favourable PCR is present
+  long_buildup_bonus: 15
+  short_covering_bonus: 8
 
 scan:
   # Lookback period for daily bars

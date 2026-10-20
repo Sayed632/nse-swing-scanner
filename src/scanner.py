@@ -23,17 +23,25 @@ console = Console()
 
 def _analyse_one(args: tuple) -> Optional[Dict[str, Any]]:
     """
-    Worker function – must be top-level for ProcessPoolExecutor on Windows.
-    args = (ticker, df, indicator_cfg, scan_cfg)
+    Worker function.
+    args = (ticker, df, indicator_cfg, scan_cfg, oi_cfg, use_oi)
     """
-    ticker, df, indicator_cfg, scan_cfg = args
+    ticker, df, indicator_cfg, scan_cfg, oi_cfg, use_oi = args
     try:
         df = compute_indicators(df, indicator_cfg)
         signal = detect_swing_signals(df, {**indicator_cfg, **scan_cfg})
         if not signal.get("qualified"):
             return None
 
-        return {
+        # Price change % for OI buildup classification (last 2 closes)
+        price_chg_pct = 0.0
+        try:
+            if len(df) >= 2:
+                price_chg_pct = ((df["Close"].iloc[-1] / df["Close"].iloc[-2]) - 1) * 100
+        except Exception:
+            pass
+
+        result = {
             "ticker": ticker.replace(".NS", ""),
             "price": signal["entry"],
             "score": signal["score"],
@@ -47,7 +55,33 @@ def _analyse_one(args: tuple) -> Optional[Dict[str, Any]]:
             "rsi": signal["details"].get("rsi"),
             "vol_ratio": signal["details"].get("vol_ratio"),
             "pct_from_52w": signal["details"].get("pct_from_52w_high"),
+            "pcr": None,
+            "buildup": "N/A",
+            "oi_score": 0,
         }
+
+        # Optional F&O OI layer
+        if use_oi:
+            try:
+                from .oi import analyse_fno_stock
+                oi_res = analyse_fno_stock(ticker, price_chg_pct=price_chg_pct)
+                result["pcr"] = oi_res.get("pcr")
+                result["buildup"] = oi_res.get("buildup", "N/A")
+                result["oi_score"] = oi_res.get("oi_score", 0)
+
+                min_oi = float(oi_cfg.get("min_oi_score", 45))
+                if result["oi_score"] < min_oi:
+                    return None  # filter out weak OI
+
+                # Boost technical score when OI is supportive
+                if result["buildup"] == "Long Buildup":
+                    result["score"] = min(100, result["score"] + float(oi_cfg.get("long_buildup_bonus", 15)))
+                elif result["buildup"] == "Short Covering":
+                    result["score"] = min(100, result["score"] + float(oi_cfg.get("short_covering_bonus", 8)))
+            except Exception as e:
+                logger.debug("OI layer failed for %s: %s", ticker, e)
+
+        return result
     except Exception as e:
         logger.debug("Analyse failed for %s: %s", ticker, e)
         return None
@@ -111,15 +145,18 @@ def run_scan(cfg: Dict[str, Any]) -> pd.DataFrame:
         except Exception:
             continue
 
-    console.print(f"[bold cyan]Analysing[/] {len(filtered)} liquid names ...")
+    oi_cfg = cfg.get("oi", {})
+    use_oi = bool(oi_cfg.get("enabled", False)) and mode in ("fno", "fo", "futures", "f&o")
+
+    console.print(f"[bold cyan]Analysing[/] {len(filtered)} liquid names "
+                  f"{'(with OI + PCR)' if use_oi else ''} ...")
 
     # Prepare worker args
     worker_args = [
-        (t, df, ind_cfg, scan_cfg) for t, df in filtered.items()
+        (t, df, ind_cfg, scan_cfg, oi_cfg, use_oi) for t, df in filtered.items()
     ]
 
     results: List[Dict[str, Any]] = []
-    # ProcessPool can be heavy; ThreadPool is safer for yfinance + many cores
     from concurrent.futures import ThreadPoolExecutor
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -130,7 +167,7 @@ def run_scan(cfg: Dict[str, Any]) -> pd.DataFrame:
                 results.append(res)
 
     if not results:
-        console.print("[yellow]No swing setups matched the current criteria.[/]")
+        console.print("[yellow]No setups matched the current criteria.[/]")
         return pd.DataFrame()
 
     df_out = pd.DataFrame(results)
@@ -140,28 +177,30 @@ def run_scan(cfg: Dict[str, Any]) -> pd.DataFrame:
     df_out = df_out.head(top_n)
 
     # Pretty table
-    table = Table(title="NSE Swing Setups – Ranked", show_lines=False)
+    title = "NSE F&O Daily Setups (Technical + OI)" if use_oi else "NSE Swing Setups – Ranked"
+    table = Table(title=title, show_lines=False)
     table.add_column("Rank", justify="right", style="dim")
     table.add_column("Ticker", style="bold cyan")
     table.add_column("Price", justify="right")
     table.add_column("Score", justify="right", style="green")
+    table.add_column("Buildup")
+    table.add_column("PCR", justify="right")
     table.add_column("Signals")
     table.add_column("Stop", justify="right")
     table.add_column("T1", justify="right")
-    table.add_column("RR1", justify="right")
-    table.add_column("RSI", justify="right")
 
     for i, row in df_out.iterrows():
+        pcr_str = f"{row['pcr']:.2f}" if pd.notna(row.get("pcr")) and row.get("pcr") is not None else "-"
         table.add_row(
             str(i + 1),
             row["ticker"],
             f"₹{row['price']:.1f}",
             f"{row['score']:.1f}",
-            row["signals"][:40],
+            str(row.get("buildup", "N/A"))[:16],
+            pcr_str,
+            str(row["signals"])[:28],
             f"{row['stop']:.1f}",
             f"{row['target1']:.1f}",
-            f"{row['rr1']:.1f}",
-            f"{row['rsi']:.0f}" if pd.notna(row["rsi"]) else "-",
         )
 
     console.print(table)
