@@ -26,11 +26,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run swing scanner (Nifty 500 for speed on CI)
+      - name: Run F&O scanner (Technical + OI + PCR) and send Telegram
         run: |
-          python main.py --universe nifty500 --workers 8 --top 25
+          python main.py --universe fno --workers 6 --top 15
         env:
-          # Optional – add these as GitHub secrets if you enable Telegram
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
