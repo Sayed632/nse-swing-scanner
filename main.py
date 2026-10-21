@@ -89,6 +89,25 @@ def main() -> int:
         df.to_csv(path, index=False)
         console.print(f"\n[green]Saved[/] {len(df)} setups → {path}")
 
+    # Telegram alert
+    tg_cfg = cfg.get("telegram", {})
+    if tg_cfg.get("enabled", False) or (
+        # Auto-enable when secrets are present (useful for GitHub Actions)
+        __import__("os").getenv("TELEGRAM_TOKEN") and __import__("os").getenv("TELEGRAM_CHAT_ID")
+    ):
+        try:
+            from src.telegram_bot import format_and_send
+            mode = cfg.get("universe", {}).get("mode", "fno")
+            top_n = int(tg_cfg.get("top_n", 12))
+            ok = format_and_send(df, mode=mode, top_n=top_n)
+            if ok:
+                console.print("[green]Telegram report sent[/]")
+            else:
+                console.print("[yellow]Telegram send skipped or failed[/]")
+        except Exception as e:
+            console.print(f"[yellow]Telegram error: {e}[/]")
+            logging.exception("Telegram failed")
+
     console.rule("[bold green]Done")
     return 0
 

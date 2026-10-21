@@ -68,9 +68,11 @@ output:
   cache_hours: 6               # Re-use cached OHLCV if younger than this
 
 telegram:
-  enabled: false               # Set true + add secrets to enable
-  # Token and chat_id come from environment variables:
-  # TELEGRAM_TOKEN / TELEGRAM_CHAT_ID
+  enabled: true                # Also auto-enables when TELEGRAM_TOKEN + TELEGRAM_CHAT_ID exist
+  top_n: 12                    # How many setups to send in the Telegram message
+  # Credentials come from environment / GitHub Secrets:
+  # TELEGRAM_TOKEN
+  # TELEGRAM_CHAT_ID
 
 logging:
   level: "INFO"
